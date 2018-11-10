@@ -7,24 +7,28 @@ const createDeferred = require('./deferred')
 
 const bundles = {}
 
+const defaultBabelLoaderRules = () => {
+  return [
+      {
+        test: /\.jsx?$/,
+        exclude: [/node_modules/],
+        use: [
+          {
+            loader: require.resolve('babel-loader'),
+            options: {
+              presets: require.resolve('@babel/preset-env'),
+            },
+          },
+        ],
+      },
+    ]
+}
+
 // by default, we transform JavaScript (up to anything at stage-4) and JSX
 const defaultOptions = {
   webpackOptions: {
     module: {
-      rules: [
-        {
-          test: /\.jsx?$/,
-          exclude: [/node_modules/],
-          use: [
-            {
-              loader: require.resolve('babel-loader'),
-              options: {
-                presets: require.resolve('@babel/preset-env'),
-              },
-            },
-          ],
-        },
-      ],
+      rules: [],
     },
   },
   watchOptions: {},
@@ -63,6 +67,9 @@ const preprocessor = (options = {}) => {
 
     // user can override the default options
     let webpackOptions = Object.assign({}, defaultOptions.webpackOptions, options.webpackOptions)
+    if (webpackOptions.module.rules === defaultOptions.webpackOptions) {
+      webpackOptions.module.rules = defaultBabelLoaderRules()
+    }
     let watchOptions = Object.assign({}, defaultOptions.watchOptions, options.watchOptions)
 
     // we're provided a default output path that lives alongside Cypress's
