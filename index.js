@@ -7,23 +7,26 @@ const createDeferred = require('./deferred')
 
 const bundles = {}
 
+// by default, we transform JavaScript supported by @babel/preset-env
 const defaultBabelLoaderRules = () => {
   return [
-      {
-        exclude: [/node_modules/],
-        use: [
-          {
-            loader: require.resolve('babel-loader'),
-            options: {
-              presets: require.resolve('@babel/preset-env'),
-            },
+    {
       test: /\.js?$/,
+      exclude: [/node_modules/],
+      use: [
+        {
+          loader: require.resolve('babel-loader'),
+          options: {
+            presets: require.resolve('@babel/preset-env'),
           },
-        ],
-      },
-    ]
+        },
+      ],
+    },
+  ]
 }
 
+// we don't automatically load the rules, so that the babel dependencies are
+// not required if a user passes in their own configuration
 const defaultOptions = {
   webpackOptions: {
     module: {
@@ -66,6 +69,8 @@ const preprocessor = (options = {}) => {
 
     // user can override the default options
     let webpackOptions = Object.assign({}, defaultOptions.webpackOptions, options.webpackOptions)
+    // here is where we load the default rules if the user has not passed
+    // in their own configuration
     if (webpackOptions.module.rules === defaultOptions.webpackOptions) {
       webpackOptions.module.rules = defaultBabelLoaderRules()
     }
