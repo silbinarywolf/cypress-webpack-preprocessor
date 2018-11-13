@@ -184,7 +184,15 @@ const preprocessor = (options = {}) => {
   }
 }
 
-// provide a clone of the default options
-preprocessor.defaultOptions = cloneDeep(defaultOptions)
+// provide a clone of the default options, making sure to lazy-load
+// babel dependencies so that they aren't required unless the user
+// utilizes them
+Object.defineProperty(preprocessor, 'defaultOptions', {
+  get () {
+    const clonedDefaults = cloneDeep(defaultOptions)
+    clonedDefaults.webpackOptions.module.rules = defaultBabelLoaderRules()
+    return clonedDefaults
+  },
+})
 
 module.exports = preprocessor
