@@ -10,7 +10,6 @@ const bundles = {}
 const defaultBabelLoaderRules = () => {
   return [
       {
-        test: /\.jsx?$/,
         exclude: [/node_modules/],
         use: [
           {
@@ -18,13 +17,13 @@ const defaultBabelLoaderRules = () => {
             options: {
               presets: require.resolve('@babel/preset-env'),
             },
+      test: /\.js?$/,
           },
         ],
       },
     ]
 }
 
-// by default, we transform JavaScript (up to anything at stage-4) and JSX
 const defaultOptions = {
   webpackOptions: {
     module: {
