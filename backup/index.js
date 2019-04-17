@@ -1,8 +1,8 @@
 const cloneDeep = require('lodash.clonedeep')
 const path = require('path')
-const fs = require('fs')
 const webpack = require('webpack')
 const log = require('debug')('cypress:webpack')
+const fs = require('fs');
 
 const createDeferred = require('./deferred')
 
@@ -37,6 +37,8 @@ const defaultOptions = {
   watchOptions: {},
 }
 
+let hasCompiled = false;
+
 // export a function that returns another function, making it easy for users
 // to configure like so:
 //
@@ -57,87 +59,26 @@ const preprocessor = (options = {}) => {
   // with the same filePath, as the user could re-run the tests, causing
   // the supported file and spec file to be requested again
   return (file) => {
-  	const filePath = file.filePath
+	const filePath = file.filePath
 
-  	// when the spec or project is closed, we need to clean up the cached
-	// bundle promise and stop the watcher via `bundler.close()`
-	file.on('close', () => {
-	  log('close', filePath)
-	  delete bundles[filePath]
-
-	  //if (file.shouldWatch) {
-		//bundler.close()
-	  //}
-	})
-
-	const fileBundle = '';
-
-	//
-	let testFiles = [];
-	{
-		let inputPath = '';
-		const dirParts = filePath.split(path.sep);
-		for (let i = dirParts.length - 1; i >= 0; i--) {
-			const dirPart = dirParts[i];
-			if (dirPart === 'integration') {
-				inputPath = dirParts.slice(0, i+1).join(path.sep)
-				break
-			}
-		}
-		
-		testFiles = [
-			'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\address.test.ts',
-			'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\autocomplete.test.ts',
-			'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\support\\index.js',
-		];
-		/*if (inputPath !== '') {
-			filewalker(inputPath, function(err, results) {
-				testFiles = results;
-			});
-		}
-		log('files', inputPath, testFiles);
-		throw new Error(inputPath);*/
-	}
+	filewalker("C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration", function(err, data){
+	    if(err){
+	        throw err;
+	    }
+	    
+	    // ["c://some-existent-path/file.txt","c:/some-existent-path/subfolder"]
+	    console.log(data);
+	});
 
 	log('get', filePath)
-
-	// we're provided a default output path that lives alongside Cypress's
-	// app data files so we don't have to worry about where to put the bundled
-	// file on disk
-	let outputDir = path.dirname(file.outputPath);
-	{
-		const dirParts = outputDir.split(path.sep);
-		for (let i = dirParts.length - 1; i >= 0; i--) {
-			const dirPart = dirParts[i];
-			if (dirPart === 'cypress') {
-				outputDir = dirParts.slice(0, i+1).join(path.sep)
-				break
-			}
-		}
-	}
-
-	//throw new Error(filePath);
 
 	// since this function can get called multiple times with the same
 	// filePath, we return the cached bundle promise if we already have one
 	// since we don't want or need to re-initiate webpack for it
 	if (bundles[filePath]) {
 	  log(`already have bundle for ${filePath}`)
-	  return bundles[filePath].promise
+	  return bundles[filePath]
 	}
-
-	/*if (file.shouldWatch) {
-		log('watching')
-
-		if (compiler.hooks) {
-			compiler.hooks.compile.tap(plugin, onCompile)
-		} else {
-			compiler.plugin('compile', onCompile)
-		}
-		const watchOptions = Object.assign({}, defaultOptions.watchOptions, options.watchOptions)
-		compiler.watch(watchOptions, handle)
-		return;
-	}*/
 
 	// user can override the default options
 	let webpackOptions = Object.assign({}, defaultOptions.webpackOptions, options.webpackOptions)
@@ -146,59 +87,85 @@ const preprocessor = (options = {}) => {
 	if (webpackOptions.module.rules === defaultOptions.webpackOptions) {
 	  webpackOptions.module.rules = defaultBabelLoaderRules()
 	}
+	let watchOptions = Object.assign({}, defaultOptions.watchOptions, options.watchOptions)
+
+	// we're provided a default output path that lives alongside Cypress's
+	// app data files so we don't have to worry about where to put the bundled
+	// file on disk
+	const outputPath = file.outputPath
+
+	let compiler;
+	let latestBundle;
 
 	// we need to set entry and output
-	webpackOptions = Object.assign(webpackOptions, {
-	  entry: {},
-	  output: {
-		path: outputDir, // path.dirname(outputPath),
-		filename: (chunkData) => {
-			return chunkData.chunk.name;
-			//throw new Error('filename: ' + chunkData.chunk.name + ', ' + path.basename(outputPath) + ', ' + path.dirname(outputPath));
-			//return chunkData.chunk.name === 'main' ? '[name].js': '[name]/[name].js';
-		}
-	  },
-	})
-	testFiles.forEach((testFile) => {
-		webpackOptions.entry[path.basename(testFile)] = testFile;
-		const deferred = createDeferred();
-		bundles[testFile] = deferred;
-	})
+	if (filePath === 'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\support\\index.js') {
+		webpackOptions = Object.assign(webpackOptions, {
+		  entry: filePath,
+		  output: {
+			path: path.dirname(outputPath),
+			filename: path.basename(filePath),
+		  },
+		})
+		log(`input: ${filePath}`)
+		log(`output: ${outputPath}`)
 
-	log(`input: ${filePath}`)
-	log(`output: ${outputDir}`)
+		compiler = webpack(webpackOptions)
 
-	const compiler = webpack(webpackOptions)
+		// we keep a reference to the latest bundle in this scope
+		// it's a deferred object that will be resolved or rejected in
+		// the `handle` function below and its promise is what is ultimately
+		// returned from this function
+		latestBundle = createDeferred()
+		// cache the bundle promise, so it can be returned if this function
+		// is invoked again with the same filePath
+		bundles[filePath] = latestBundle.promise;
+	} else {
+		webpackOptions = Object.assign(webpackOptions, {
+		  //entry: filePath,
+		  entry: {
+			  'address.test.ts': 'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\address.test.ts',
+			  'autocomplete.test.ts': 'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\autocomplete.test.ts',
+		  },
+		  output: {
+			path: path.dirname(outputPath),
+			filename: (chunkData) => {
+				console.warn('output: ', outputPath);
+				return chunkData.chunk.name;
+				//throw new Error('filename: ' + chunkData.chunk.name + ', ' + path.basename(outputPath) + ', ' + path.dirname(outputPath));
+				//return chunkData.chunk.name === 'main' ? '[name].js': '[name]/[name].js';
+			}
+		  },
+		})
+		log(`input: ${filePath}`)
+		log(`output: ${outputPath}`)
 
-	// we keep a reference to the latest bundle in this scope
-	// it's a deferred object that will be resolved or rejected in
-	// the `handle` function below and its promise is what is ultimately
-	// returned from this function
-	//let latestBundle = createDeferred()
+		compiler = webpack(webpackOptions)
 
-	// cache the bundle promise, so it can be returned if this function
-	// is invoked again with the same filePath
-	//bundles[filePath] = latestBundle.promise
+		// we keep a reference to the latest bundle in this scope
+		// it's a deferred object that will be resolved or rejected in
+		// the `handle` function below and its promise is what is ultimately
+		// returned from this function
+		latestBundle = createDeferred()
+		// cache the bundle promise, so it can be returned if this function
+		// is invoked again with the same filePath
+		//bundles[filePath] = latestBundle.promise
+		bundles['C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\address.test.ts'] = latestBundle.promise;
+		bundles['C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\autocomplete.test.ts'] = latestBundle.promise;
+	}
+	
+	//throw new Error(filePath);
 
 	const rejectWithErr = (err) => {
 	  err.filePath = filePath
 	  // backup the original stack before it's potentially modified by bluebird
 	  err.originalStack = err.stack
-	  log(`errored bundling ${outputDir}`, err)
-	  testFiles.forEach((testFile) => {
-	  	for (var testFile in bundles) {
-	  		const bundle = bundles[testFile];
-	  		if (bundle !== undefined) {
-	  			bundles[testFile].reject(err);
-	  		}
-	  	}
-	  })
-	  //latestBundle.reject(err)
+	  log(`errored bundling ${outputPath}`, err)
+	  latestBundle.reject(err)
 	}
 
 	// this function is called when bundling is finished, once at the start
 	// and, if watching, each time watching triggers a re-bundle
-	const onBundleFinished = (err, stats) => {
+	const handle = (err, stats) => {
 	  if (err) {
 		return rejectWithErr(err)
 	  }
@@ -213,29 +180,21 @@ const preprocessor = (options = {}) => {
 
 	  // these stats are really only useful for debugging
 	  if (jsonStats.warnings.length > 0) {
-		log(`warnings for ${outputDir}`)
+		log(`warnings for ${outputPath}`)
 		log(jsonStats.warnings)
 	  }
 
-	  log('finished bundling', outputDir)
-
+	  log('finished bundling', outputPath)
 	  // resolve with the outputPath so Cypress knows where to serve
 	  // the file from
-	  for (let testFile in bundles) {
-	  	const bundle = bundles[testFile];
-		if (bundle === undefined) {
-			continue;
-		}
-		const outputPath = outputDir + path.sep + path.basename(testFile);
-		log('bundle output ', outputPath);
-		bundle.resolve(outputDir+path.sep+path.basename(testFile));
-	  }
+	  latestBundle.resolve(outputPath)
+	  //latestBundle.resolve('C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\autocomplete.test.ts')
 	}
 
 	// this event is triggered when watching and a file is saved
 	const plugin = { name: 'CypressWebpackPreprocessor' }
 
-	/*const onCompile = () => {
+	const onWatchCompile = () => {
 	  log('compile', filePath)
 	  // we overwrite the latest bundle, so that a new call to this function
 	  // returns a promise that resolves when the bundling is finished
@@ -246,14 +205,36 @@ const preprocessor = (options = {}) => {
 		// know to rerun the spec
 		file.emit('rerun')
 	  })
-	}*/
+	}
 
+	// when we should watch, we hook into the 'compile' hook so we know when
+	// to rerun the tests
+	if (file.shouldWatch) {
+	  log('watching')
 
-	const bundler = compiler.run(onBundleFinished);
+	  if (compiler.hooks) {
+		compiler.hooks.compile.tap(plugin, onWatchCompile)
+	  } else {
+		compiler.plugin('compile', onWatchCompile)
+	  }
+	}
+
+	const bundler = file.shouldWatch ? compiler.watch(watchOptions, handle) : compiler.run(handle)
+
+	// when the spec or project is closed, we need to clean up the cached
+	// bundle promise and stop the watcher via `bundler.close()`
+	file.on('close', () => {
+	  log('close', filePath)
+	  delete bundles[filePath]
+
+	  if (file.shouldWatch) {
+		bundler.close()
+	  }
+	})
 
 	// return the promise, which will resolve with the outputPath or reject
 	// with any error encountered
-	return bundles[filePath].promise
+	return bundles[filePath]
   }
 }
 
