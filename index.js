@@ -57,18 +57,18 @@ const preprocessor = (options = {}) => {
   // with the same filePath, as the user could re-run the tests, causing
   // the supported file and spec file to be requested again
   return (file) => {
-  	const filePath = file.filePath
+	const filePath = file.filePath;
 
-  	// when the spec or project is closed, we need to clean up the cached
+	// when the spec or project is closed, we need to clean up the cached
 	// bundle promise and stop the watcher via `bundler.close()`
-	file.on('close', () => {
+	/*file.on('close', () => {
 	  log('close', filePath)
 	  delete bundles[filePath]
 
 	  //if (file.shouldWatch) {
 		//bundler.close()
 	  //}
-	})
+	})*/
 
 	const fileBundle = '';
 
@@ -80,14 +80,19 @@ const preprocessor = (options = {}) => {
 		for (let i = dirParts.length - 1; i >= 0; i--) {
 			const dirPart = dirParts[i];
 			if (dirPart === 'integration') {
-				inputPath = dirParts.slice(0, i+1).join(path.sep)
+				inputPath = dirParts.slice(0, i+1).join(path.sep);
 				break
 			}
 		}
 		
 		testFiles = [
+			'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\datepicker.test.ts',
 			'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\address.test.ts',
 			'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\autocomplete.test.ts',
+			'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\category-description.test.ts',
+			'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\field-holder.test.ts',
+			'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\search.test.ts',
+			'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\integration\\unit\\text.test.ts',
 			'C:\\build\\devel\\srcjava\\AcurityWeb\\src\\main\\javascript\\cypress\\support\\index.js',
 		];
 		/*if (inputPath !== '') {
@@ -99,8 +104,6 @@ const preprocessor = (options = {}) => {
 		throw new Error(inputPath);*/
 	}
 
-	log('get', filePath)
-
 	// we're provided a default output path that lives alongside Cypress's
 	// app data files so we don't have to worry about where to put the bundled
 	// file on disk
@@ -110,21 +113,29 @@ const preprocessor = (options = {}) => {
 		for (let i = dirParts.length - 1; i >= 0; i--) {
 			const dirPart = dirParts[i];
 			if (dirPart === 'cypress') {
-				outputDir = dirParts.slice(0, i+1).join(path.sep)
-				break
+				outputDir = dirParts.slice(0, i+1).join(path.sep);
+				break;
 			}
 		}
 	}
 
-	//throw new Error(filePath);
-
 	// since this function can get called multiple times with the same
 	// filePath, we return the cached bundle promise if we already have one
 	// since we don't want or need to re-initiate webpack for it
-	if (bundles[filePath]) {
-	  log(`already have bundle for ${filePath}`)
-	  return bundles[filePath].promise
+	if (bundles[filePath] !== undefined) {
+	  log(`already have bundle for ${filePath}`);
+	  return bundles[filePath].promise;
+	} else {
+		log(`no bundle ${filePath}`)
 	}
+
+	log('compile test files', testFiles)
+
+	// If bundles is already populated but didn't match the current file
+	// some sort of error has occurred.
+	//for (let testFile in bundles) {
+	//	throw new Error(`already generated bundles previously.`);
+	//}
 
 	/*if (file.shouldWatch) {
 		log('watching')
@@ -152,21 +163,55 @@ const preprocessor = (options = {}) => {
 	  entry: {},
 	  output: {
 		path: outputDir, // path.dirname(outputPath),
+		chunkFilename: '[name].chunk.js',
 		filename: (chunkData) => {
 			return chunkData.chunk.name;
 			//throw new Error('filename: ' + chunkData.chunk.name + ', ' + path.basename(outputPath) + ', ' + path.dirname(outputPath));
 			//return chunkData.chunk.name === 'main' ? '[name].js': '[name]/[name].js';
 		}
 	  },
+	  /* optimization: {
+		splitChunks: {
+		  cacheGroups: {},
+		},
+	  },*/
+	//  optimization: {
+   //  runtimeChunk: 'single'
+  // }
+/*	  optimization: {
+			splitChunks: {
+				cacheGroups: {
+					vendors: {
+						chunks: 'all',
+						test: /[\\/]node_modules[\\/]/,
+						priority: -10,
+					},
+					default: {
+						minChunks: 1,
+						priority: -20,
+						reuseExistingChunk: true,
+					}
+				},
+			},
+		},*/
 	})
 	testFiles.forEach((testFile) => {
-		webpackOptions.entry[path.basename(testFile)] = testFile;
-		const deferred = createDeferred();
-		bundles[testFile] = deferred;
+		const testFileKey = path.basename(testFile);
+		webpackOptions.entry[testFileKey] = testFile;
+		// https://github.com/webpack-contrib/mini-css-extract-plugin/issues/116#issuecomment-387278305
+		/*webpackOptions.optimization.splitChunks.cacheGroups[testFileKey] = {
+			test: testFile,
+			name: testFileKey,
+		};*/
+		bundles[testFile] = createDeferred();
 	})
+	/*webpackOptions.optimization.splitChunks.cacheGroups['vendors'] = {
+		test: /[\\/]node_modules[\\/]/,
+        name: "vendors",
+	};*/
 
-	log(`input: ${filePath}`)
-	log(`output: ${outputDir}`)
+	//log(`input: ${filePath}`)
+	//log(`output: ${outputDir}`)
 
 	const compiler = webpack(webpackOptions)
 
@@ -186,14 +231,12 @@ const preprocessor = (options = {}) => {
 	  err.originalStack = err.stack
 	  log(`errored bundling ${outputDir}`, err)
 	  testFiles.forEach((testFile) => {
-	  	for (var testFile in bundles) {
-	  		const bundle = bundles[testFile];
-	  		if (bundle !== undefined) {
-	  			bundles[testFile].reject(err);
-	  		}
-	  	}
+		for (let testFile in bundles) {
+			if (bundles[testFile] !== undefined) {
+				bundles[testFile].reject(err);
+			}
+		}
 	  })
-	  //latestBundle.reject(err)
 	}
 
 	// this function is called when bundling is finished, once at the start
@@ -217,19 +260,21 @@ const preprocessor = (options = {}) => {
 		log(jsonStats.warnings)
 	  }
 
-	  log('finished bundling', outputDir)
-
 	  // resolve with the outputPath so Cypress knows where to serve
 	  // the file from
 	  for (let testFile in bundles) {
-	  	const bundle = bundles[testFile];
-		if (bundle === undefined) {
+		if (bundles[testFile] === undefined) {
 			continue;
 		}
 		const outputPath = outputDir + path.sep + path.basename(testFile);
-		log('bundle output ', outputPath);
-		bundle.resolve(outputDir+path.sep+path.basename(testFile));
+		if (!fs.existsSync(outputPath)) {
+			throw new Error('Bundle file missing. Possible error with Webpack configuration.');
+		}
+		bundles[testFile].resolve(outputPath);
+		log('bundle input:', testFile, '\noutput:', outputPath);
 	  }
+
+	  log('finished bundling')
 	}
 
 	// this event is triggered when watching and a file is saved
@@ -276,36 +321,36 @@ Object.defineProperty(preprocessor, 'defaultOptions', {
  * @param {Function} done 
  */
 function filewalker(dir, done) {
-    let results = [];
+	let results = [];
 
-    fs.readdir(dir, function(err, list) {
-        if (err) return done(err);
+	fs.readdir(dir, function(err, list) {
+		if (err) return done(err);
 
-        var pending = list.length;
+		var pending = list.length;
 
-        if (!pending) return done(null, results);
+		if (!pending) return done(null, results);
 
-        list.forEach(function(file){
-            file = path.resolve(dir, file);
+		list.forEach(function(file){
+			file = path.resolve(dir, file);
 
-            fs.stat(file, function(err, stat){
-                // If directory, execute a recursive call
-                if (stat && stat.isDirectory()) {
-                    // Add directory to array [comment if you need to remove the directories from the array]
-                    results.push(file);
+			fs.stat(file, function(err, stat){
+				// If directory, execute a recursive call
+				if (stat && stat.isDirectory()) {
+					// Add directory to array [comment if you need to remove the directories from the array]
+					results.push(file);
 
-                    filewalker(file, function(err, res){
-                        results = results.concat(res);
-                        if (!--pending) done(null, results);
-                    });
-                } else {
-                    results.push(file);
+					filewalker(file, function(err, res){
+						results = results.concat(res);
+						if (!--pending) done(null, results);
+					});
+				} else {
+					results.push(file);
 
-                    if (!--pending) done(null, results);
-                }
-            });
-        });
-    });
+					if (!--pending) done(null, results);
+				}
+			});
+		});
+	});
 };
 
 module.exports = preprocessor
